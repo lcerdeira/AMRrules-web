@@ -263,19 +263,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function generateLink(header, value) {
+        function generateLink(header, value) {
         if (!value || value === '-' || value.trim() === '') {
-            return value; // Return original value if no actual ID
+            return value;
         }
         const baseUrl = ACCESSION_URLS[header];
         if (baseUrl) {
-            // Special handling for evidence codes if they are like ECO:0000000
-            if (header === 'evidence code' && value.includes(':')) {
-                 return `<a href="${baseUrl}${value.replace(":", "_")}" target="_blank">${value}</a>`;
+            // Handle multiple values separated by common delimiters like ',' or ';'
+            const ids = value.split(/[,;]\s*/).map(id => id.trim()).filter(id => id);
+            if (ids.length > 1) {
+                return ids.map(id => {
+                    let idLink = id;
+                    if (header === 'evidence code' && id.includes(':')) {
+                        idLink = `<a href="${baseUrl}${id.replace(":", "_")}" target="_blank">${id}</a>`;
+                    } else {
+                        idLink = `<a href="${baseUrl}${encodeURIComponent(id)}" target="_blank">${id}</a>`;
+                    }
+                    return idLink;
+                }).join(', '); // Join multiple links with a comma and space
+            } else { // Single value
+                 if (header === 'evidence code' && value.includes(':')) {
+                     return `<a href="${baseUrl}${value.replace(":", "_")}" target="_blank">${value}</a>`;
+                 }
+                return `<a href="${baseUrl}${encodeURIComponent(value)}" target="_blank">${value}</a>`;
             }
-            return `<a href="${baseUrl}${encodeURIComponent(value)}" target="_blank">${value}</a>`;
         }
-        return value; // No link if header not in ACCESSION_URLS
+        return value;
     }
 
     function displayResults(results, searchTerm, selectedColumn) {
@@ -291,40 +304,46 @@ document.addEventListener('DOMContentLoaded', () => {
             itemDiv.appendChild(fileInfo);
 
             const contentPre = document.createElement('pre');
-            let displayHTML = '';
+            let displayRowHTML = '';
 
             if (result.isHeader) {
-                displayHTML = result.headers.map(header => {
-                    let headerText = header;
-                    if (searchTerm && header.toLowerCase().includes(searchTerm.toLowerCase())) {
+                // For headers, just join and highlight
+                displayRowHTML = result.headers.map(headerText => {
+                    if (searchTerm && headerText.toLowerCase().includes(searchTerm.toLowerCase())) {
                         const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
-                        headerText = header.replace(regex, '<span class="highlight">$1</span>');
+                        return headerText.replace(regex, '<span class="highlight">$1</span>');
                     }
                     return headerText;
                 }).join('\t');
             } else {
-                // For data rows, construct the display string with potential links
-                displayHTML = result.headers.map(header => {
+                // For data rows, process each cell for links and then highlight
+                displayRowHTML = result.headers.map(header => {
                     const originalValue = result.rowData[header] || '';
-                    let cellDisplay = generateLink(header, originalValue); // Generate link if applicable
+                    let cellContentHTML = generateLink(header, originalValue); // Step 1: Generate link
 
-                    // Highlight if searchTerm matches, being careful not to mess up HTML from generateLink
+                    // Step 2: Highlight the content (which might be plain text or an <a> tag string)
                     if (searchTerm && originalValue.toLowerCase().includes(searchTerm.toLowerCase())) {
                         const regex = new RegExp(escapeRegExp(searchTerm), 'gi');
-                        // If it's already a link, highlight within the link text
-                        if (cellDisplay.startsWith('<a')) {
-                            cellDisplay = cellDisplay.replace(/>([^<]+)</, (match, linkText) => {
-                                return `>${linkText.replace(regex, '<span class="highlight">$&</span>')}<`;
+                        // If cellContentHTML is already a link, we need to be careful
+                        // A simple approach: highlight the originalValue and rebuild link if necessary,
+                        // or highlight within the link's text content.
+                        // For simplicity, if it's a link, highlight its visible text part.
+                        if (cellContentHTML.startsWith('<a')) {
+                             // Matches the text content between > and <
+                            cellContentHTML = cellContentHTML.replace(/>([^<]+)</g, (match, linkText) => {
+                                const highlightedText = linkText.replace(regex, '<span class="highlight">$&</span>');
+                                return `>${highlightedText}<`;
                             });
                         } else {
-                           cellDisplay = cellDisplay.replace(regex, '<span class="highlight">$&</span>');
+                            // If not a link, just highlight the plain text
+                            cellContentHTML = cellContentHTML.replace(regex, '<span class="highlight">$&</span>');
                         }
                     }
-                    return cellDisplay; // This now might contain HTML
-                }).join('\t'); // Still using tab for pre formatting, but cells might be links
+                    return cellContentHTML;
+                }).join('\t'); // Join processed cells with a tab
             }
 
-            contentPre.innerHTML = displayHTML; // Use innerHTML because displayHTML can contain HTML tags
+            contentPre.innerHTML = displayRowHTML; // Use innerHTML because displayRowHTML contains HTML
             itemDiv.appendChild(contentPre);
             fragment.appendChild(itemDiv);
         });
