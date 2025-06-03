@@ -14,7 +14,42 @@ document.addEventListener('DOMContentLoaded', () => {
     const LOCAL_STORAGE_KEY = 'localTxtFileData';
     let currentSearchResults = []; // To store results for download
 
-    // Load data from local storage on page load
+        // --- Define the desired fixed header order for display and download ---
+    const FIXED_HEADER_ORDER = [
+        'ruleID',
+        'organism',
+        'gene',
+        'nodeID',
+        'refseq accession',
+        'GenBank accession',
+        'HMM accession',
+        'ARO accession',
+        'mutation',
+        'variation type',
+        'context',
+        'drug',
+        'drug class',
+        'phenotype',
+        'clinical category',
+        'breakpoint',
+        'breakpoint standard',
+        'PMID',
+        'evidence code',
+        'evidence description',
+        'evidence grade',
+        'evidence limitations',
+        'rule curation note'
+    ];
+
+    // --- URLs for Hyperlinks ---
+    const ACCESSION_URLS = {
+        'GenBank accession': 'https://www.ncbi.nlm.nih.gov/nuccore/',
+        'refseq accession': 'https://www.ncbi.nlm.nih.gov/nuccore/',
+        'PMID': 'https://pubmed.ncbi.nlm.nih.gov/',
+        'ARO accession': 'https://card.mcmaster.ca/aro/',
+        'evidence code': 'https://evidenceontology.org/term/', // Or https://www.ebi.ac.uk/QuickGO/term/ if ECO codes
+    };
+
     loadFilesFromStorageAndSetup();
 
     loadButton.addEventListener('click', () => {
@@ -32,6 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLoadedFilesList([]);
             updateColumnSelector([]);
             searchResultsDiv.innerHTML = '';
+            // Clear sort column select if it exists (though it shouldn't with this change)
+            const sortSelect = document.getElementById('sortColumnSelect');
+            if (sortSelect) sortSelect.innerHTML = '<option value="">Select Column to Sort</option>';
+
             resultsCountDiv.textContent = '';
             currentSearchResults = [];
             toggleDownloadButtons(false);
@@ -39,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Event listeners
     searchButton.addEventListener('click', performSearch);
     searchInput.addEventListener('keyup', (event) => {
         if (event.key === 'Enter') {
@@ -54,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let filesProcessed = 0;
         const allHeaders = new Set();
 
-        // Collect existing headers
         Object.values(existingData).forEach(fileData => {
             if (fileData.headers) {
                 fileData.headers.forEach(h => allHeaders.add(h));
@@ -70,9 +109,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 existingData[file.name] = {
                     name: file.name,
-                    content: content, // Store raw content
-                    headers: parsed.headers, // Store parsed headers
-                    rows: parsed.rows,       // Store parsed rows
+                    content: content,
+                    headerLineIndex: parsed.headerLineIndex,
+                    headers: parsed.headers,
+                    rows: parsed.rows,
                     type: file.type,
                     lastModified: file.lastModifiedDate ? file.lastModifiedDate.toLocaleDateString() : 'N/A'
                 };
@@ -82,13 +122,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateLoadedFilesList(Object.keys(existingData));
                     updateColumnSelector(Array.from(allHeaders));
                     alert(`${files.length} file(s) loaded and stored.`);
-                    fileInput.value = ''; // Clear the file input
+                    fileInput.value = '';
                 }
             };
             reader.onerror = () => {
                 alert(`Error reading file: ${file.name}`);
                 filesProcessed++;
-                 if (filesProcessed === files.length) { // still update storage if some files fail
+                 if (filesProcessed === files.length) {
                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existingData));
                     updateLoadedFilesList(Object.keys(existingData));
                     updateColumnSelector(Array.from(allHeaders));
@@ -103,18 +143,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const allHeaders = new Set();
         if (data) {
             Object.values(data).forEach(fileData => {
-                if (fileData.headers) { // Check if headers were stored (for backward compatibility)
+                if (fileData.headers && fileData.rows) {
                     fileData.headers.forEach(h => allHeaders.add(h));
-                } else { // If old format, parse now
+                } else {
                     const parsed = parseTSV(fileData.content);
                     fileData.headers = parsed.headers;
                     fileData.rows = parsed.rows;
+                    fileData.headerLineIndex = parsed.headerLineIndex;
                     parsed.headers.forEach(h => allHeaders.add(h));
                 }
             });
-            // Resave with parsed data if it was missing
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-
             updateLoadedFilesList(Object.keys(data));
             updateColumnSelector(Array.from(allHeaders));
         } else {
@@ -139,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateColumnSelector(headers) {
-        columnSelect.innerHTML = '<option value="all">All Columns</option>'; // Reset
+        columnSelect.innerHTML = '<option value="all">All Columns</option>';
         headers.sort().forEach(header => {
             if (header.trim() !== '') {
                 const option = document.createElement('option');
@@ -150,12 +189,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     function parseTSV(content) {
         const lines = content.split('\n');
-        // Ensure the first line (headers) is not empty or just whitespace
         const headerLineIndex = lines.findIndex(line => line.trim() !== '');
-        if (headerLineIndex === -1) return { headers: [], rows: [] }; // No content
+        if (headerLineIndex === -1) return { headers: [], rows: [], headerLineIndex: -1 };
 
         const headers = lines[headerLineIndex].split('\t').map(h => h.trim());
         const dataRows = lines.slice(headerLineIndex + 1);
@@ -167,11 +204,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 rowObject[header] = values[index] ? values[index].trim() : '';
             });
             return rowObject;
-        }).filter(row => Object.values(row).some(val => val !== '')); // Filter out completely empty rows
-
-        return { headers, rows };
+        }).filter(row => Object.values(row).some(val => val && val.trim() !== ''));
+        return { headers, rows, headerLineIndex };
     }
 
+    // Helper function to get headers for display/download based on loaded files
+    function getHeadersForOutput() {
+        const storedData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {};
+        const allLoadedHeadersSet = new Set();
+        Object.values(storedData).forEach(fileData => {
+            if (fileData.headers) {
+                fileData.headers.forEach(h => allLoadedHeadersSet.add(h));
+            }
+        });
+        return FIXED_HEADER_ORDER.filter(fixedHeader => allLoadedHeadersSet.has(fixedHeader));
+    }
 
     function performSearch() {
         const searchTerm = searchInput.value.trim().toLowerCase();
@@ -198,43 +245,39 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const fileName in storedData) {
             if (storedData.hasOwnProperty(fileName)) {
                 const fileData = storedData[fileName];
-                const fileHeaders = fileData.headers || []; // Use stored headers
-                const fileRows = fileData.rows || [];     // Use stored rows
+                const fileHeaders = fileData.headers || [];
+                const fileRows = fileData.rows || [];
+                const fileHeaderLineIndex = fileData.headerLineIndex;
 
-                // Search headers if "All Columns" or if the selected column itself matches
                 if (selectedColumn === 'all') {
                     if (fileHeaders.some(header => header.toLowerCase().includes(searchTerm))) {
                         currentSearchResults.push({
                             fileName: fileName,
                             isHeader: true,
-                            headers: fileHeaders, // For download
+                            headers: fileHeaders,
                             matchedContent: fileHeaders.join('\t'),
-                            lineNumber: 1 // Or actual line number if available
+                            lineNumber: fileHeaderLineIndex !== undefined ? fileHeaderLineIndex + 1 : 1
                         });
                         matchesCount++;
                     }
-                } else if (selectedColumn.toLowerCase().includes(searchTerm) && fileHeaders.includes(selectedColumn)) {
+                } else if (fileHeaders.includes(selectedColumn) && selectedColumn.toLowerCase().includes(searchTerm)) {
                      currentSearchResults.push({
                         fileName: fileName,
                         isHeader: true,
                         headers: fileHeaders,
                         matchedContent: fileHeaders.join('\t'),
-                        lineNumber: 1
+                        lineNumber: fileHeaderLineIndex !== undefined ? fileHeaderLineIndex + 1 : 1
                     });
                     matchesCount++;
                 }
 
-
-                // Search rows
                 fileRows.forEach((row, rowIndex) => {
                     let rowMatched = false;
                     if (selectedColumn === 'all') {
-                        // Search in all values of the row
                         if (Object.values(row).some(val => val.toLowerCase().includes(searchTerm))) {
                             rowMatched = true;
                         }
                     } else {
-                        // Search only in the selected column
                         if (row.hasOwnProperty(selectedColumn) && row[selectedColumn].toLowerCase().includes(searchTerm)) {
                             rowMatched = true;
                         }
@@ -244,9 +287,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         currentSearchResults.push({
                             fileName: fileName,
                             isHeader: false,
-                            headers: fileHeaders, // For download context
-                            rowData: row, // Store the row object
-                            lineNumber: rowIndex + 2 // +1 for header line, +1 for 0-based index
+                            headers: fileHeaders,
+                            rowData: row,
+                            lineNumber: fileHeaderLineIndex !== undefined ? fileHeaderLineIndex + rowIndex + 2 : rowIndex + 2
                         });
                         matchesCount++;
                     }
@@ -254,7 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        displayResults(currentSearchResults, searchTerm, selectedColumn);
+        displayResults(currentSearchResults);
         resultsCountDiv.textContent = `Found ${matchesCount} match(es).`;
         toggleDownloadButtons(matchesCount > 0);
         if (matchesCount === 0) {
@@ -262,42 +305,83 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function displayResults(results, searchTerm, selectedColumn) {
-        searchResultsDiv.innerHTML = ''; // Clear previous results
-        results.forEach(result => {
-            const itemDiv = document.createElement('div');
-            itemDiv.classList.add('result-item');
+    function generateLink(header, value) {
+        if (!value || value === '-' || value.trim() === '') {
+            return value;
+        }
+        const baseUrl = ACCESSION_URLS[header];
+        if (baseUrl) {
+            // Handle multiple values separated by common delimiters like ',' or ';'
+            const ids = value.split(/[,;\s*]+/).map(id => id.trim()).filter(id => id);
+            if (ids.length > 1) {
+                return ids.map(id => {
+                    let idLink = id;
+                    if (header === 'ARO accession' && id.includes(':')) { // Specific handling for ARO accessions
+                        idLink = `<a href="${baseUrl}${id.replace("ARO:", "")}" target="_blank">${id}</a>`;
+                    } else if (header === 'evidence code' && id.includes(':')) { // Specific handling for evidence codes (e.g., ECO:0000269)
+                         idLink = `<a href="${baseUrl}${id.replace("ECO:", "ECO:")}" target="_blank">${id}</a>`;
+                    } else {
+                        idLink = `<a href="${baseUrl}${encodeURIComponent(id)}">${id}</a>`;
 
-            const fileInfo = document.createElement('p');
-            fileInfo.innerHTML = `Found in: <strong>${result.fileName}</strong> (Line: ${result.lineNumber})`;
-            itemDiv.appendChild(fileInfo);
-
-            const contentPre = document.createElement('pre');
-            let displayContent;
-
-            if (result.isHeader) {
-                displayContent = result.headers.join('\t');
-            } else {
-                // Construct the original TSV line from rowData and headers
-                displayContent = result.headers.map(header => result.rowData[header] || '').join('\t');
+                    }
+                    return idLink;
+                }).join(', '); // Join multiple links with a ; and space
+            } else { // Single value
+                 if (header === 'ARO accession' && value.includes(':')) {
+                     return `<a href="${baseUrl}${value.replace("ARO:", "")}" target="_blank">${value}</a>`;
+                 }
+                 if (header === 'evidence code' && value.includes(':')) {
+                     return `<a href="${baseUrl}${value.replace("ECO:", "ECO:")}" target="_blank">${value}</a>`;
+                 }
+                return `<a href="${baseUrl}${encodeURIComponent(value)}">${value}</a>`;
             }
+        }
+        return value;
+    }
 
-            if (searchTerm) {
-                const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
-                if (selectedColumn === 'all' || result.isHeader) {
-                    displayContent = displayContent.replace(regex, '<span class="highlight">$1</span>');
-                } else if (result.rowData && result.rowData.hasOwnProperty(selectedColumn)) {
-                    // Highlight only in the specific column for row data if column is selected
-                    // This is tricky for pre-formatted text. Simpler to highlight full line if any part matches.
-                    // For more precise column highlighting, would need to render as a table or similar.
-                    // For now, stick to highlighting the search term anywhere in the displayed line.
-                     displayContent = displayContent.replace(regex, '<span class="highlight">$1</span>');
-                }
-            }
-            contentPre.innerHTML = displayContent;
-            itemDiv.appendChild(contentPre);
-            searchResultsDiv.appendChild(itemDiv);
+    function displayResults(results) {
+        searchResultsDiv.innerHTML = '';
+        if (results.length === 0) {
+            searchResultsDiv.innerHTML = '<p>No results found.</p>';
+            return;
+        }
+        
+        const headersToDisplay = getHeadersForOutput();
+        
+        const table = document.createElement('table');
+        table.classList.add('results-table');
+
+        // Create table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headersToDisplay.forEach(headerText => { // Use the headers determined for display
+            const th = document.createElement('th');
+            th.textContent = headerText; // Use the header from the filtered list
+            headerRow.appendChild(th);
         });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Create table body
+        const tbody = document.createElement('tbody');
+        const fragment = document.createDocumentFragment();
+
+        results.forEach(result => {
+            const rowElement = document.createElement('tr');
+            
+        // Add data cells based on the headers to display
+        headersToDisplay.forEach(header => {
+            const td = document.createElement('td');
+            // Get cell value from rowData if it's a data row, or header text if it's a header row match
+            const cellValue = result.isHeader ? (result.headers.includes(header) ? header : '') : (result.rowData[header]);
+            td.innerHTML = generateLink(header, cellValue); // Use innerHTML to render links
+            rowElement.appendChild(td);
+            });
+            fragment.appendChild(rowElement);
+        });
+        tbody.appendChild(fragment);
+        table.appendChild(tbody);
+        searchResultsDiv.appendChild(table);
     }
 
     function toggleDownloadButtons(enable) {
@@ -305,57 +389,23 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCsvButton.disabled = !enable;
     }
 
-    function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
     function downloadResults(format) {
         if (currentSearchResults.length === 0) {
             alert("No results to download.");
             return;
         }
-
-        let content = '';
-        let universalHeaders = new Set(['SourceFile', 'OriginalLineNumber']);
-        let fileSpecificHeaders = new Map(); // To store headers per file
-
-        // First pass to get all unique headers from results
-        currentSearchResults.forEach(result => {
-            if (result.headers) {
-                result.headers.forEach(h => universalHeaders.add(h));
-                if (!fileSpecificHeaders.has(result.fileName)) {
-                    fileSpecificHeaders.set(result.fileName, result.headers);
-                }
-            }
-        });
-        const sortedHeaders = Array.from(universalHeaders);
-        // Ensure SourceFile and OriginalLineNumber are first if they exist
-        const fixedHeaders = ['SourceFile', 'OriginalLineNumber']
-                               .filter(h => sortedHeaders.includes(h))
-                               .concat(sortedHeaders.filter(h => !['SourceFile', 'OriginalLineNumber'].includes(h)));
-
-
+        
+        const headersForDownload = getHeadersForOutput();
         const separator = format === 'tsv' ? '\t' : ',';
-        content += fixedHeaders.map(h => (format === 'csv' ? `"${h.replace(/"/g, '""')}"` : h)).join(separator) + '\n';
+        let content = headersForDownload.map(h => (format === 'csv' ? `"${h.replace(/"/g, '""')}"` : h)).join(separator) + '\n';
 
         currentSearchResults.forEach(result => {
             const rowValues = [];
-            fixedHeaders.forEach(header => {
+            headersForDownload.forEach(header => {
                 let value = '';
-                if (header === 'SourceFile') {
-                    value = result.fileName;
-                } else if (header === 'OriginalLineNumber') {
-                    value = result.lineNumber;
-                } else if (result.isHeader) {
-                    // If it's a header match, the "value" for other columns could be empty or the header itself if it matches
-                    value = result.headers.includes(header) ? header : '';
-                } else if (result.rowData && result.rowData.hasOwnProperty(header)) {
-                    value = result.rowData[header];
-                }
-
-                if (format === 'csv') {
-                    value = `"${(value || '').toString().replace(/"/g, '""')}"`;
-                }
+                // Get cell value from rowData if it's a data row, or header text if it's a header row match
+                value = result.isHeader ? (result.headers.includes(header) ? header : '') : (result.rowData[header] || ''); // Use || '' to handle undefined
+                if (format === 'csv') value = `"${(value || '').toString().replace(/"/g, '""')}"`;
                 rowValues.push(value);
             });
             content += rowValues.join(separator) + '\n';
@@ -370,5 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url); // Clean up
     }
 });
