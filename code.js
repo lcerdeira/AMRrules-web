@@ -14,7 +14,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const LOCAL_STORAGE_KEY = 'localTxtFileData';
     let currentSearchResults = []; // To store results for download
 
-    // Load data from local storage on page load
+    // --- URLs for Hyperlinks ---
+    const ACCESSION_URLS = {
+        'GenBank accession': 'https://www.ncbi.nlm.nih.gov/nuccore/',
+        'refseq accession': 'https://www.ncbi.nlm.nih.gov/nuccore/',
+        'PMID': 'https://pubmed.ncbi.nlm.nih.gov/',
+        // HMM accession: No standard central public URL, depends on the source (e.g., Pfam, TIGRFAMs)
+        // For demonstration, assuming a generic placeholder or a specific one if known.
+        // If HMM accessions are from a specific DB like Pfam, use that. e.g., https://pfam.xfam.org/family/
+        'HMM accession': 'https://www.ebi.ac.uk/interpro/search/sequence/', // Example: InterPro search
+        'ARO accession': 'https://card.mcmaster.ca/aro/',
+        'evidence code': 'https://evidenceontology.org/term/', // Or https://www.ebi.ac.uk/QuickGO/term/ if ECO codes
+    };
+
+
     loadFilesFromStorageAndSetup();
 
     loadButton.addEventListener('click', () => {
@@ -54,7 +67,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let filesProcessed = 0;
         const allHeaders = new Set();
 
-        // Collect existing headers
         Object.values(existingData).forEach(fileData => {
             if (fileData.headers) {
                 fileData.headers.forEach(h => allHeaders.add(h));
@@ -70,9 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 existingData[file.name] = {
                     name: file.name,
-                    content: content, // Store raw content
-                    headers: parsed.headers, // Store parsed headers
-                    rows: parsed.rows,       // Store parsed rows
+                    content: content,
+                    headers: parsed.headers,
+                    rows: parsed.rows,
                     type: file.type,
                     lastModified: file.lastModifiedDate ? file.lastModifiedDate.toLocaleDateString() : 'N/A'
                 };
@@ -82,13 +94,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateLoadedFilesList(Object.keys(existingData));
                     updateColumnSelector(Array.from(allHeaders));
                     alert(`${files.length} file(s) loaded and stored.`);
-                    fileInput.value = ''; // Clear the file input
+                    fileInput.value = '';
                 }
             };
             reader.onerror = () => {
                 alert(`Error reading file: ${file.name}`);
                 filesProcessed++;
-                 if (filesProcessed === files.length) { // still update storage if some files fail
+                 if (filesProcessed === files.length) {
                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existingData));
                     updateLoadedFilesList(Object.keys(existingData));
                     updateColumnSelector(Array.from(allHeaders));
@@ -103,18 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const allHeaders = new Set();
         if (data) {
             Object.values(data).forEach(fileData => {
-                if (fileData.headers) { // Check if headers were stored (for backward compatibility)
+                if (fileData.headers && fileData.rows) {
                     fileData.headers.forEach(h => allHeaders.add(h));
-                } else { // If old format, parse now
+                } else {
                     const parsed = parseTSV(fileData.content);
                     fileData.headers = parsed.headers;
                     fileData.rows = parsed.rows;
                     parsed.headers.forEach(h => allHeaders.add(h));
                 }
             });
-            // Resave with parsed data if it was missing
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-
             updateLoadedFilesList(Object.keys(data));
             updateColumnSelector(Array.from(allHeaders));
         } else {
@@ -139,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateColumnSelector(headers) {
-        columnSelect.innerHTML = '<option value="all">All Columns</option>'; // Reset
+        columnSelect.innerHTML = '<option value="all">All Columns</option>';
         headers.sort().forEach(header => {
             if (header.trim() !== '') {
                 const option = document.createElement('option');
@@ -150,12 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     function parseTSV(content) {
         const lines = content.split('\n');
-        // Ensure the first line (headers) is not empty or just whitespace
         const headerLineIndex = lines.findIndex(line => line.trim() !== '');
-        if (headerLineIndex === -1) return { headers: [], rows: [] }; // No content
+        if (headerLineIndex === -1) return { headers: [], rows: [] };
 
         const headers = lines[headerLineIndex].split('\t').map(h => h.trim());
         const dataRows = lines.slice(headerLineIndex + 1);
@@ -167,11 +175,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 rowObject[header] = values[index] ? values[index].trim() : '';
             });
             return rowObject;
-        }).filter(row => Object.values(row).some(val => val !== '')); // Filter out completely empty rows
-
+        }).filter(row => Object.values(row).some(val => val && val.trim() !== ''));
         return { headers, rows };
     }
-
 
     function performSearch() {
         const searchTerm = searchInput.value.trim().toLowerCase();
@@ -198,22 +204,21 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const fileName in storedData) {
             if (storedData.hasOwnProperty(fileName)) {
                 const fileData = storedData[fileName];
-                const fileHeaders = fileData.headers || []; // Use stored headers
-                const fileRows = fileData.rows || [];     // Use stored rows
+                const fileHeaders = fileData.headers || [];
+                const fileRows = fileData.rows || [];
 
-                // Search headers if "All Columns" or if the selected column itself matches
                 if (selectedColumn === 'all') {
                     if (fileHeaders.some(header => header.toLowerCase().includes(searchTerm))) {
                         currentSearchResults.push({
                             fileName: fileName,
                             isHeader: true,
-                            headers: fileHeaders, // For download
+                            headers: fileHeaders,
                             matchedContent: fileHeaders.join('\t'),
-                            lineNumber: 1 // Or actual line number if available
+                            lineNumber: 1 // Placeholder, actual line number might vary if file has empty lines at top
                         });
                         matchesCount++;
                     }
-                } else if (selectedColumn.toLowerCase().includes(searchTerm) && fileHeaders.includes(selectedColumn)) {
+                } else if (fileHeaders.includes(selectedColumn) && selectedColumn.toLowerCase().includes(searchTerm)) {
                      currentSearchResults.push({
                         fileName: fileName,
                         isHeader: true,
@@ -224,17 +229,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     matchesCount++;
                 }
 
-
-                // Search rows
                 fileRows.forEach((row, rowIndex) => {
                     let rowMatched = false;
                     if (selectedColumn === 'all') {
-                        // Search in all values of the row
                         if (Object.values(row).some(val => val.toLowerCase().includes(searchTerm))) {
                             rowMatched = true;
                         }
                     } else {
-                        // Search only in the selected column
                         if (row.hasOwnProperty(selectedColumn) && row[selectedColumn].toLowerCase().includes(searchTerm)) {
                             rowMatched = true;
                         }
@@ -244,9 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         currentSearchResults.push({
                             fileName: fileName,
                             isHeader: false,
-                            headers: fileHeaders, // For download context
-                            rowData: row, // Store the row object
-                            lineNumber: rowIndex + 2 // +1 for header line, +1 for 0-based index
+                            headers: fileHeaders,
+                            rowData: row,
+                            lineNumber: rowIndex + 2 // Adjust if actual line numbers are tracked from raw content
                         });
                         matchesCount++;
                     }
@@ -262,43 +263,74 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function generateLink(header, value) {
+        if (!value || value === '-' || value.trim() === '') {
+            return value; // Return original value if no actual ID
+        }
+        const baseUrl = ACCESSION_URLS[header];
+        if (baseUrl) {
+            // Special handling for evidence codes if they are like ECO:0000000
+            if (header === 'evidence code' && value.includes(':')) {
+                 return `<a href="${baseUrl}${value.replace(":", "_")}" target="_blank">${value}</a>`;
+            }
+            return `<a href="${baseUrl}${encodeURIComponent(value)}" target="_blank">${value}</a>`;
+        }
+        return value; // No link if header not in ACCESSION_URLS
+    }
+
     function displayResults(results, searchTerm, selectedColumn) {
-        searchResultsDiv.innerHTML = ''; // Clear previous results
+        searchResultsDiv.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+
         results.forEach(result => {
             const itemDiv = document.createElement('div');
             itemDiv.classList.add('result-item');
 
             const fileInfo = document.createElement('p');
-            fileInfo.innerHTML = `Found in: <strong>${result.fileName}</strong> (Line: ${result.lineNumber})`;
+            fileInfo.innerHTML = `Found in: <strong>${result.fileName}</strong> (Original Line: ${result.lineNumber})`;
             itemDiv.appendChild(fileInfo);
 
             const contentPre = document.createElement('pre');
-            let displayContent;
+            let displayHTML = '';
 
             if (result.isHeader) {
-                displayContent = result.headers.join('\t');
+                displayHTML = result.headers.map(header => {
+                    let headerText = header;
+                    if (searchTerm && header.toLowerCase().includes(searchTerm.toLowerCase())) {
+                        const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
+                        headerText = header.replace(regex, '<span class="highlight">$1</span>');
+                    }
+                    return headerText;
+                }).join('\t');
             } else {
-                // Construct the original TSV line from rowData and headers
-                displayContent = result.headers.map(header => result.rowData[header] || '').join('\t');
+                // For data rows, construct the display string with potential links
+                displayHTML = result.headers.map(header => {
+                    const originalValue = result.rowData[header] || '';
+                    let cellDisplay = generateLink(header, originalValue); // Generate link if applicable
+
+                    // Highlight if searchTerm matches, being careful not to mess up HTML from generateLink
+                    if (searchTerm && originalValue.toLowerCase().includes(searchTerm.toLowerCase())) {
+                        const regex = new RegExp(escapeRegExp(searchTerm), 'gi');
+                        // If it's already a link, highlight within the link text
+                        if (cellDisplay.startsWith('<a')) {
+                            cellDisplay = cellDisplay.replace(/>([^<]+)</, (match, linkText) => {
+                                return `>${linkText.replace(regex, '<span class="highlight">$&</span>')}<`;
+                            });
+                        } else {
+                           cellDisplay = cellDisplay.replace(regex, '<span class="highlight">$&</span>');
+                        }
+                    }
+                    return cellDisplay; // This now might contain HTML
+                }).join('\t'); // Still using tab for pre formatting, but cells might be links
             }
 
-            if (searchTerm) {
-                const regex = new RegExp(`(${escapeRegExp(searchTerm)})`, 'gi');
-                if (selectedColumn === 'all' || result.isHeader) {
-                    displayContent = displayContent.replace(regex, '<span class="highlight">$1</span>');
-                } else if (result.rowData && result.rowData.hasOwnProperty(selectedColumn)) {
-                    // Highlight only in the specific column for row data if column is selected
-                    // This is tricky for pre-formatted text. Simpler to highlight full line if any part matches.
-                    // For more precise column highlighting, would need to render as a table or similar.
-                    // For now, stick to highlighting the search term anywhere in the displayed line.
-                     displayContent = displayContent.replace(regex, '<span class="highlight">$1</span>');
-                }
-            }
-            contentPre.innerHTML = displayContent;
+            contentPre.innerHTML = displayHTML; // Use innerHTML because displayHTML can contain HTML tags
             itemDiv.appendChild(contentPre);
-            searchResultsDiv.appendChild(itemDiv);
+            fragment.appendChild(itemDiv);
         });
+        searchResultsDiv.appendChild(fragment);
     }
+
 
     function toggleDownloadButtons(enable) {
         downloadTsvButton.disabled = !enable;
@@ -315,47 +347,29 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let content = '';
         let universalHeaders = new Set(['SourceFile', 'OriginalLineNumber']);
-        let fileSpecificHeaders = new Map(); // To store headers per file
-
-        // First pass to get all unique headers from results
         currentSearchResults.forEach(result => {
-            if (result.headers) {
-                result.headers.forEach(h => universalHeaders.add(h));
-                if (!fileSpecificHeaders.has(result.fileName)) {
-                    fileSpecificHeaders.set(result.fileName, result.headers);
-                }
-            }
+            if (result.headers) result.headers.forEach(h => universalHeaders.add(h));
         });
-        const sortedHeaders = Array.from(universalHeaders);
-        // Ensure SourceFile and OriginalLineNumber are first if they exist
-        const fixedHeaders = ['SourceFile', 'OriginalLineNumber']
-                               .filter(h => sortedHeaders.includes(h))
-                               .concat(sortedHeaders.filter(h => !['SourceFile', 'OriginalLineNumber'].includes(h)));
 
+        const sortedHeaders = Array.from(universalHeaders);
+        const fixedHeaders = ['SourceFile', 'OriginalLineNumber']
+            .filter(h => sortedHeaders.includes(h))
+            .concat(sortedHeaders.filter(h => !['SourceFile', 'OriginalLineNumber'].includes(h)));
 
         const separator = format === 'tsv' ? '\t' : ',';
-        content += fixedHeaders.map(h => (format === 'csv' ? `"${h.replace(/"/g, '""')}"` : h)).join(separator) + '\n';
+        let content = fixedHeaders.map(h => (format === 'csv' ? `"${h.replace(/"/g, '""')}"` : h)).join(separator) + '\n';
 
         currentSearchResults.forEach(result => {
             const rowValues = [];
             fixedHeaders.forEach(header => {
                 let value = '';
-                if (header === 'SourceFile') {
-                    value = result.fileName;
-                } else if (header === 'OriginalLineNumber') {
-                    value = result.lineNumber;
-                } else if (result.isHeader) {
-                    // If it's a header match, the "value" for other columns could be empty or the header itself if it matches
-                    value = result.headers.includes(header) ? header : '';
-                } else if (result.rowData && result.rowData.hasOwnProperty(header)) {
-                    value = result.rowData[header];
-                }
+                if (header === 'SourceFile') value = result.fileName;
+                else if (header === 'OriginalLineNumber') value = result.lineNumber;
+                else if (result.isHeader) value = result.headers.includes(header) ? header : '';
+                else if (result.rowData && result.rowData.hasOwnProperty(header)) value = result.rowData[header];
 
-                if (format === 'csv') {
-                    value = `"${(value || '').toString().replace(/"/g, '""')}"`;
-                }
+                if (format === 'csv') value = `"${(value || '').toString().replace(/"/g, '""')}"`;
                 rowValues.push(value);
             });
             content += rowValues.join(separator) + '\n';
@@ -370,5 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url); // Clean up
     }
 });
