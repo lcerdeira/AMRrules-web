@@ -16,8 +16,22 @@ body {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
-h1, h2 {
-    color: #333;
+.header-section {
+    display: flex;
+    align-items: center; /* Vertically align items in the center */
+    margin-bottom: 20px; /* Space below the header */
+}
+
+#logo {
+    height: 100px; /* Adjust as needed */
+    width: auto; /* Maintain aspect ratio */
+    margin-right: 15px; /* Space between logo and title */
+}
+
+h1, h2, h3 {
+    color: #9500b3;
+    margin-top: 0; /* Remove default top margin for h1 if it's in a flex container */
+    margin-bottom: 0; /* Remove default bottom margin for h1 if it's in a flex container */
 }
 
 .controls, .search-section, .status {
@@ -46,10 +60,18 @@ input[type="file"] {
     width: auto; /* Revert for file input */
 }
 
+/* Styles for the search results table container */
+#searchResults {
+    max-height: 500px; /* Or any height you prefer before scrolling starts */
+    overflow-y: auto;  /* Add vertical scroll if content exceeds max-height */
+    overflow-x: auto;  /* Add horizontal scroll if table content is too wide */
+    margin-top: 10px;  /* Space above the table, adjusted from table's margin */
+    padding-right: 1px; /* Small padding to prevent scrollbar from overlapping content */
+}
 
 button {
     padding: 10px 15px;
-    background-color: #007bff;
+    background-color: #9500b3;
     color: white;
     border: none;
     border-radius: 4px;
@@ -59,15 +81,15 @@ button {
 }
 
 button:hover {
-    background-color: #0056b3;
+    background-color: #9500b3;
 }
 
 #clearButton {
-    background-color: #dc3545;
+    background-color: #dd8fc7;
 }
 
 #clearButton:hover {
-    background-color: #c82333;
+    background-color: #dd8fc7;
 }
 
 #loadedFilesList {
@@ -119,7 +141,40 @@ button:hover {
 }
 
 .download-buttons button:disabled {
-    background-color: #cccccc;
-    color: #666666;
+    background-color: #dd8fc7;
+    color: #eee;
     cursor: not-allowed;
+}table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+th {
+    background-color: #f2f2f2;
+    /* cursor: pointer; /* Was for indicating sortable columns */
+}
+
+tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+tr:hover {
+    background-color: #e9e9e9;
+}
+/* Basic responsiveness for smaller screens */
+@media (max-width: 768px) {
+    .container {
+        padding: 15px;
+    }
+    input[type="text"], select {
+        width: 100%; /* Allow text inputs and selects to take full width on smaller screens */
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
 }

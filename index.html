@@ -3,22 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Local TXT File Searcher</title>
-    <link rel="stylesheet" href="style.css">
+    <title>AMRrules Search</title>
+    <link rel="stylesheet" href="code.css">
 </head>
 <body>
     <div class="container">
-        <h1>Local TXT File Searcher</h1>
+        <div class="header-section">
+            <img src="logo.png" alt="Logo" id="logo">
+            <h2>Search</h2>
+        </div>
 
         <div class="controls">
-            <label for="fileInput">Select TXT files:</label>
+            <label for="fileInput">Select files to load:</label>
             <input type="file" id="fileInput" multiple accept=".txt">
             <button id="loadButton">Load Selected Files</button>
             <button id="clearButton">Clear Loaded Data</button>
         </div>
 
         <div class="status">
-            <h2>Loaded Files:</h2>
+            <h3>Loaded Files:</h3>
             <ul id="loadedFilesList">
                 <!-- Loaded file names will appear here -->
             </ul>
@@ -46,7 +49,6 @@
                 <button id="downloadCsvButton" disabled>Download Results as CSV</button>
             </div>
         </div>
-    </div>
 
     <script src="code.js"></script>
 </body>
