@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local TXT File Searcher</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Local TXT File Searcher</h1>
+
+        <div class="controls">
+            <label for="fileInput">Select TXT files:</label>
+            <input type="file" id="fileInput" multiple accept=".txt">
+            <button id="loadButton">Load Selected Files</button>
+            <button id="clearButton">Clear Loaded Data</button>
+        </div>
+
+        <div class="status">
+            <h2>Loaded Files:</h2>
+            <ul id="loadedFilesList">
+                <!-- Loaded file names will appear here -->
+            </ul>
+        </div>
+
+        <div class="search-section">
+            <label for="searchInput">Search Term:</label>
+            <input type="text" id="searchInput" placeholder="Enter search term...">
+            <label for="columnSelect">Search in Column:</label>
+            <select id="columnSelect">
+                <option value="all">All Columns</option>
+                <!-- Columns will be populated here by JS -->
+            </select>
+            <button id="searchButton">Search</button>
+        </div>
+
+        <div class="results-section">
+            <h2>Search Results:</h2>
+            <div id="resultsCount"></div>
+            <div id="searchResults">
+                <!-- Search results will appear here -->
+            </div>
+            <div class="download-buttons">
+                <button id="downloadTsvButton" disabled>Download Results as TSV</button>
+                <button id="downloadCsvButton" disabled>Download Results as CSV</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="code.js"></script>
+</body>
+</html>
