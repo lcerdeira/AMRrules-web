@@ -22,13 +22,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Constants ---
     const LOCAL_STORAGE_KEY = 'localTxtFileData_v2';
     const DEFAULT_FILES = [
-        'data/Yersinia_v1.txt',
-        'data/Staphylococcus_aureus_v1.txt',
-        'data/Salmonella_v1.txt',
-        // 'Klebsiella_pneumoniae_v1.txt', 'Escherichia_coli_v1.txt', 'Pseudomonas_aeruginosa_v1.txt',
-        // 'Enterococcus_faecium_v1.txt', 'Enterococcus_faecalis_v1.txt', 'Neisseria_gonorrhoeae_v1.txt',
-        // 'Enterobacter_v1.txt',
-        'data/Acinetobacter_baumannii_v1.txt'
+        'data/Yersinia.txt',
+        'data/Staphylococcus_aureus.txt',
+        'data/Salmonella.txt',
+        'data/Klebsiella_pneumoniae.txt', 
+        'data/Escherichia_coli.txt',
+        'data/Pseudomonas_aeruginosa.txt',
+        'data/Enterococcus_faecium.txt',
+        'data/Enterococcus_faecalis.txt', 
+        'data/Neisseria_gonorrhoeae.txt',
+        'data/Enterobacter.txt',
+        'data/Acinetobacter_baumannii.txt'
     ];
     const FIXED_HEADER_ORDER = [
         'ruleID', 'organism', 'gene', 'nodeID', 'refseq accession', 'GenBank accession',
