@@ -8,13 +8,24 @@ body {
 }
 
 .container {
-    max-width: 900px;
+    max-width: 900px; /* Adjusted for potentially wider tables */
     margin: auto;
     background: #fff;
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
+@media (min-width: 1200px) { /* Allow wider container for larger screens */
+    .container {
+        max-width: 1100px;
+    }
+}
+@media (min-width: 1600px) {
+    .container {
+        max-width: 1500px;
+    }
+}
+
 
 .header-section {
     display: flex;
@@ -30,11 +41,15 @@ body {
 
 h1, h2, h3 {
     color: #9500b3;
-    margin-top: 0; /* Remove default top margin for h1 if it's in a flex container */
-    margin-bottom: 0; /* Remove default bottom margin for h1 if it's in a flex container */
+    margin-top: 0; 
+    margin-bottom: 0.5em; /* Added some bottom margin for h2/h3 */
+}
+h1 {
+    margin-bottom: 0;
 }
 
-.controls, .search-section, .status {
+
+.controls, .search-section, .browse-section, .status, .mode-selection {
     margin-bottom: 20px;
     padding-bottom: 15px;
     border-bottom: 1px solid #eee;
@@ -43,7 +58,7 @@ h1, h2, h3 {
 label {
     display: block;
     margin-bottom: 5px;
-    margin-top: 10px; /* Added for spacing */
+    margin-top: 10px; 
 }
 
 input[type="file"], input[type="text"], select {
@@ -51,22 +66,25 @@ input[type="file"], input[type="text"], select {
     margin-right: 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    width: calc(100% - 22px); /* Adjust width for padding and border */
+    width: calc(100% - 22px); 
     box-sizing: border-box;
     margin-bottom: 10px;
 }
 
 input[type="file"] {
-    width: auto; /* Revert for file input */
+    width: auto; 
 }
+/* Specific width for dropdowns if needed */
+/* Removed empty ruleset for #columnSelect, #browseFileSelect */
 
-/* Styles for the search results table container */
+
 #searchResults {
-    max-height: 500px; /* Or any height you prefer before scrolling starts */
-    overflow-y: auto;  /* Add vertical scroll if content exceeds max-height */
-    overflow-x: auto;  /* Add horizontal scroll if table content is too wide */
-    margin-top: 10px;  /* Space above the table, adjusted from table's margin */
-    padding-right: 1px; /* Small padding to prevent scrollbar from overlapping content */
+    max-height: 600px; /* Increased height */
+    overflow-y: auto;  
+    overflow-x: auto;  
+    margin-top: 10px;  
+    padding-right: 1px; 
+    border: 1px solid #ddd; /* Added border for clarity */
 }
 
 button {
@@ -76,12 +94,12 @@ button {
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    margin-top: 5px; /* Added for spacing */
+    margin-top: 5px; 
     margin-right: 5px;
 }
 
 button:hover {
-    background-color: #9500b3;
+    background-color: #7a0091; /* Darker hover */
 }
 
 #clearButton {
@@ -89,18 +107,24 @@ button:hover {
 }
 
 #clearButton:hover {
-    background-color: #dd8fc7;
+    background-color: #c86ba5; /* Darker hover for clear */
 }
 
 #loadedFilesList {
     list-style: disc;
     padding-left: 20px;
+    max-height: 100px; /* Limit height for loaded files list */
+    overflow-y: auto;
+    border: 1px solid #eee;
+    padding-top: 5px;
+    padding-bottom: 5px;
 }
 
 #loadedFilesList li {
     margin-bottom: 5px;
 }
 
+/* Results item styling - might not be used if table view is primary */
 .result-item {
     border: 1px solid #e0e0e0;
     padding: 10px;
@@ -114,17 +138,17 @@ button:hover {
 }
 
 .result-item pre {
-    white-space: pre-wrap; /* Allows text to wrap */
-    word-wrap: break-word; /* Breaks long words */
+    white-space: pre-wrap; 
+    word-wrap: break-word; 
     background-color: #eee;
     padding: 8px;
     border-radius: 3px;
     font-family: monospace;
     font-size: 0.9em;
-    overflow-x: auto; /* Add scroll for very long lines if pre-wrap isn't enough */
+    overflow-x: auto; 
 }
 
-.highlight {
+.highlight { /* For search term highlighting if implemented later */
     background-color: yellow;
     font-weight: bold;
 }
@@ -141,31 +165,76 @@ button:hover {
 }
 
 .download-buttons button:disabled {
-    background-color: #dd8fc7;
-    color: #eee;
+    background-color: #c7b2ce; /* Adjusted disabled color */
+    color: #777;
     cursor: not-allowed;
-}table {
+}
+table {
     width: 100%;
     border-collapse: collapse;
+    font-size: 0.9em; /* Slightly smaller font for tables */
 }
 
 th, td {
     border: 1px solid #ddd;
-    padding: 8px;
+    padding: 6px; /* Adjusted padding */
     text-align: left;
+    white-space: nowrap; /* Prevent text wrapping in cells by default */
 }
 
-th {
-    background-color: #f2f2f2;
-    /* cursor: pointer; /* Was for indicating sortable columns */
+td {
+    max-width: 300px; /* Limit cell width */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Add ellipsis for overflowed content */
 }
+
+td:hover { /* Show full content on hover */
+    white-space: normal;
+    overflow: visible;
+    max-width: none;
+}
+
+
+th {
+    background-color: #e9d8ed; /* Lighter purple for headers */
+    color: #333;
+    position: sticky; /* Make headers sticky */
+    top: 0; /* Stick to the top of the scrollable container */
+    z-index: 10;
+    cursor: pointer; 
+}
+
+/* Sort arrow styling */
+th .sort-arrow {
+    font-size: 0.8em;
+    margin-left: 5px;
+    color: #555;
+}
+
+/* Style for current sort column */
+th.sorted-asc, th.sorted-desc {
+    background-color: #d5b9dd; /* Slightly darker to indicate active sort */
+}
+
+/* Hide all sort arrows by default */
+.sort-arrow {
+    visibility: hidden; /* Initially hidden, shown by JS */
+    display: inline-block; /* Ensure it takes space */
+}
+
+/* Show arrow for the currently sorted column */
+th.sorted-asc .sort-arrow,
+th.sorted-desc .sort-arrow {
+    visibility: visible;
+}
+
 
 tr:nth-child(even) {
     background-color: #f9f9f9;
 }
 
 tr:hover {
-    background-color: #e9e9e9;
+    background-color: #f1e8f3; /* Lighter purple hover for rows */
 }
 /* Basic responsiveness for smaller screens */
 @media (max-width: 768px) {
@@ -173,8 +242,19 @@ tr:hover {
         padding: 15px;
     }
     input[type="text"], select {
-        width: 100%; /* Allow text inputs and selects to take full width on smaller screens */
+        width: 100%; 
         margin-right: 0;
         margin-bottom: 10px;
+    }
+    .header-section {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    #logo {
+        margin-bottom: 10px;
+    }
+    th, td {
+        white-space: normal; /* Allow wrapping on small screens */
+         font-size: 0.8em;
     }
 }

@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMRrules Search</title>
+    <title>AMRrules Explorer</title>
     <link rel="stylesheet" href="code.css">
 </head>
 <body>
     <div class="container">
         <div class="header-section">
             <img src="logo.png" alt="Logo" id="logo">
-            <h2>Search</h2>
+            <h1>Explorer</h1>
         </div>
 
         <div class="controls">
-            <label for="fileInput">Select files to load:</label>
+            <label for="fileInput">Select additional organisms files to load:</label>
             <input type="file" id="fileInput" multiple accept=".txt">
             <button id="loadButton">Load Selected Files</button>
-            <button id="clearButton">Clear Loaded Data</button>
+            <button id="clearButton">Clear All Data</button>
         </div>
 
         <div class="status">
@@ -27,7 +27,26 @@
             </ul>
         </div>
 
-        <div class="search-section">
+        <!-- Mode Selection -->
+        <div class="mode-selection" style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+            <label>Mode:</label>
+            <input type="radio" id="browseMode" name="mode" value="browse" checked>
+            <label for="browseMode" style="display: inline; margin-right: 15px;">Browse</label>
+            <input type="radio" id="searchMode" name="mode" value="search">
+            <label for="searchMode" style="display: inline;">Search</label>
+        </div>
+
+        <!-- Browse Section - Initially visible -->
+        <div id="browseControlsSection" class="browse-section">
+            <label for="browseFileSelect">Select an organism to browse:</label>
+            <select id="browseFileSelect">
+                <option value="all">All Loaded organisms files</option>
+                <!-- File names will be populated here -->
+            </select>
+        </div>
+
+        <!-- Search Section - Initially hidden -->
+        <div id="searchControlsSection" class="search-section" style="display: none;">
             <label for="searchInput">Search Term:</label>
             <input type="text" id="searchInput" placeholder="Enter search term...">
             <label for="columnSelect">Search in Column:</label>
@@ -39,17 +58,17 @@
         </div>
 
         <div class="results-section">
-            <h2>Search Results:</h2>
+            <h2 id="resultsHeader">Browse Results:</h2>
             <div id="resultsCount"></div>
             <div id="searchResults">
-                <!-- Search results will appear here -->
+                <!-- Search/Browse results will appear here -->
             </div>
             <div class="download-buttons">
                 <button id="downloadTsvButton" disabled>Download Results as TSV</button>
                 <button id="downloadCsvButton" disabled>Download Results as CSV</button>
             </div>
         </div>
-
+    </div>
     <script src="code.js"></script>
 </body>
 </html>
