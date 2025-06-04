@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'PMID': 'https://pubmed.ncbi.nlm.nih.gov/',
         'ARO accession': 'https://card.mcmaster.ca/aro/',
         'evidence code': 'https://evidenceontology.org/term/',
-        'HMM accession': 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/hmm/#' // Example, adjust if needed
+        'HMM accession': 'https://0-www-ncbi-nlm-nih-gov.brum.beds.ac.uk/genome/annotation_prok/evidence/' // Example, adjust if needed
     };
 
     // --- State Variables ---
