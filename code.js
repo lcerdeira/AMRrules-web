@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM Elements ---
     const fileInput = document.getElementById('fileInput');
     const loadButton = document.getElementById('loadButton');
     const clearButton = document.getElementById('clearButton');
@@ -11,102 +12,158 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadTsvButton = document.getElementById('downloadTsvButton');
     const downloadCsvButton = document.getElementById('downloadCsvButton');
 
-    const LOCAL_STORAGE_KEY = 'localTxtFileData';
-    let currentSearchResults = []; // To store results for download
+    const browseModeRadio = document.getElementById('browseMode');
+    const searchModeRadio = document.getElementById('searchMode');
+    const browseControlsSection = document.getElementById('browseControlsSection');
+    const searchControlsSection = document.getElementById('searchControlsSection');
+    const browseFileSelect = document.getElementById('browseFileSelect');
+    const resultsHeader = document.getElementById('resultsHeader');
 
-        // --- Define the desired fixed header order for display and download ---
-    const FIXED_HEADER_ORDER = [
-        'ruleID',
-        'organism',
-        'gene',
-        'nodeID',
-        'refseq accession',
-        'GenBank accession',
-        'HMM accession',
-        'ARO accession',
-        'mutation',
-        'variation type',
-        'context',
-        'drug',
-        'drug class',
-        'phenotype',
-        'clinical category',
-        'breakpoint',
-        'breakpoint standard',
-        'PMID',
-        'evidence code',
-        'evidence description',
-        'evidence grade',
-        'evidence limitations',
-        'rule curation note'
+    // --- Constants ---
+    const LOCAL_STORAGE_KEY = 'localTxtFileData_v2';
+    const DEFAULT_FILES = [
+        'data/Yersinia_v1.txt',
+        'data/Staphylococcus_aureus_v1.txt',
+        'data/Salmonella_v1.txt',
+        // 'Klebsiella_pneumoniae_v1.txt', 'Escherichia_coli_v1.txt', 'Pseudomonas_aeruginosa_v1.txt',
+        // 'Enterococcus_faecium_v1.txt', 'Enterococcus_faecalis_v1.txt', 'Neisseria_gonorrhoeae_v1.txt',
+        // 'Enterobacter_v1.txt',
+        'data/Acinetobacter_baumannii_v1.txt'
     ];
-
-    // --- URLs for Hyperlinks ---
+    const FIXED_HEADER_ORDER = [
+        'ruleID', 'organism', 'gene', 'nodeID', 'refseq accession', 'GenBank accession',
+        'HMM accession', 'ARO accession', 'mutation', 'variation type', 'context',
+        'drug', 'drug class', 'phenotype', 'clinical category', 'breakpoint',
+        'breakpoint standard', 'PMID', 'evidence code', 'evidence description',
+        'evidence grade', 'evidence limitations', 'rule curation note', 'Reviewed by'
+    ];
     const ACCESSION_URLS = {
         'GenBank accession': 'https://www.ncbi.nlm.nih.gov/nuccore/',
         'refseq accession': 'https://www.ncbi.nlm.nih.gov/nuccore/',
         'PMID': 'https://pubmed.ncbi.nlm.nih.gov/',
         'ARO accession': 'https://card.mcmaster.ca/aro/',
-        'evidence code': 'https://evidenceontology.org/term/', // Or https://www.ebi.ac.uk/QuickGO/term/ if ECO codes
+        'evidence code': 'https://evidenceontology.org/term/',
+        'HMM accession': 'https://www.ncbi.nlm.nih.gov/genome/annotation_prok/hmm/#' // Example, adjust if needed
     };
 
-    loadFilesFromStorageAndSetup();
+    // --- State Variables ---
+    let currentDataForDisplayAndDownload = [];
+    let currentHeadersForDisplay = [];
+    let sortColumnKey = '';
+    let sortDirection = 'asc';
 
+    // --- Initialization ---
+    initializeApplication();
+
+    // --- Event Listeners ---
     loadButton.addEventListener('click', () => {
         const files = fileInput.files;
         if (files.length === 0) {
             alert('Please select at least one file.');
             return;
         }
-        storeFiles(files);
+        handleFileUploads(files);
     });
 
     clearButton.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all loaded data?')) {
+        if (confirm('Are you sure you want to clear all loaded data (including defaults)? This will remove them from your browser\'s local storage for this page.')) {
             localStorage.removeItem(LOCAL_STORAGE_KEY);
-            updateLoadedFilesList([]);
-            updateColumnSelector([]);
-            searchResultsDiv.innerHTML = '';
-            // Clear sort column select if it exists (though it shouldn't with this change)
-            const sortSelect = document.getElementById('sortColumnSelect');
-            if (sortSelect) sortSelect.innerHTML = '<option value="">Select Column to Sort</option>';
-
-            resultsCountDiv.textContent = '';
-            currentSearchResults = [];
-            toggleDownloadButtons(false);
-            alert('Data cleared from local storage.');
+            resetUIAfterClear();
+            alert('All data cleared. Default files will need to be re-fetched if you refresh or can be re-loaded manually if needed.');
         }
     });
 
-    // Event listeners
+    browseModeRadio.addEventListener('change', handleModeChange);
+    searchModeRadio.addEventListener('change', handleModeChange);
+    browseFileSelect.addEventListener('change', triggerBrowse);
+
     searchButton.addEventListener('click', performSearch);
     searchInput.addEventListener('keyup', (event) => {
-        if (event.key === 'Enter') {
-            performSearch();
-        }
+        if (event.key === 'Enter') performSearch();
     });
 
-    downloadTsvButton.addEventListener('click', () => downloadResults('tsv'));
-    downloadCsvButton.addEventListener('click', () => downloadResults('csv'));
+    downloadTsvButton.addEventListener('click', () => downloadCurrentData('tsv'));
+    downloadCsvButton.addEventListener('click', () => downloadCurrentData('csv'));
 
-    function storeFiles(files) {
-        let existingData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {};
-        let filesProcessed = 0;
+    // --- Core Functions ---
+    async function initializeApplication() {
+        let storedData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {};
+        const defaultFileNamesInStorage = DEFAULT_FILES.filter(df => storedData[df]);
+        const defaultFilesToFetch = DEFAULT_FILES.filter(df => !storedData[df]);
+
+        if (defaultFilesToFetch.length > 0) {
+            resultsCountDiv.textContent = `Loading ${defaultFilesToFetch.length} default file(s)...`;
+            try {
+                await Promise.all(defaultFilesToFetch.map(async (fileName) => {
+                    const response = await fetch(fileName); // Assumes files are in the same directory
+                    if (!response.ok) throw new Error(`Failed to fetch ${fileName}: ${response.statusText}`);
+                    const content = await response.text();
+                    const parsed = parseTSV(content);
+                    storedData[fileName] = {
+                        name: fileName,
+                        content: content, // Store raw content
+                        headerLineIndex: parsed.headerLineIndex,
+                        headers: parsed.headers,
+                        rows: parsed.rows,
+                        type: 'text/plain', // Assuming
+                        lastModified: new Date().toLocaleDateString() // Placeholder
+                    };
+                }));
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(storedData));
+                resultsCountDiv.textContent = `Default files loaded. ${defaultFileNamesInStorage.length > 0 ? (defaultFileNamesInStorage.length + ' previously loaded default files also available.') : ''}`;
+            } catch (error) {
+                console.error("Error loading default files:", error);
+                alert("Could not load some default files. Ensure they are in the same directory as index.html. Check console for details.");
+                resultsCountDiv.textContent = "Error loading default files.";
+            }
+        } else if (Object.keys(storedData).length > 0) {
+             resultsCountDiv.textContent = "Loaded data from previous session.";
+        }
+
+
+        updateUIAfterDataLoad(storedData);
+        handleModeChange(); // Set initial mode and display (e.g., browse all)
+    }
+
+    function resetUIAfterClear() {
+        updateLoadedFilesList([]);
+        updateColumnSelector([]);
+        updateBrowseFileDropdown([]);
+        searchResultsDiv.innerHTML = '';
+        resultsCountDiv.textContent = 'No data loaded.';
+        currentDataForDisplayAndDownload = [];
+        currentHeadersForDisplay = [];
+        toggleDownloadButtons(false);
+        // Consider if you want to immediately try to reload default files here
+        // or just inform the user they will load on next refresh/visit.
+        // For now, it's cleared. A refresh will trigger initializeApplication again.
+    }
+
+    function updateUIAfterDataLoad(dataObject) {
+        const fileNames = Object.keys(dataObject);
         const allHeaders = new Set();
-
-        Object.values(existingData).forEach(fileData => {
+        Object.values(dataObject).forEach(fileData => {
             if (fileData.headers) {
                 fileData.headers.forEach(h => allHeaders.add(h));
             }
         });
+
+        updateLoadedFilesList(fileNames.sort());
+        updateColumnSelector(Array.from(allHeaders).sort());
+        updateBrowseFileDropdown(fileNames.sort());
+    }
+    
+    function handleFileUploads(files) {
+        let existingData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {};
+        let filesProcessed = 0;
+        const totalFiles = files.length;
 
         Array.from(files).forEach(file => {
             const reader = new FileReader();
             reader.onload = (event) => {
                 const content = event.target.result;
                 const parsed = parseTSV(content);
-                parsed.headers.forEach(h => allHeaders.add(h));
-
+                
                 existingData[file.name] = {
                     name: file.name,
                     content: content,
@@ -117,57 +174,157 @@ document.addEventListener('DOMContentLoaded', () => {
                     lastModified: file.lastModifiedDate ? file.lastModifiedDate.toLocaleDateString() : 'N/A'
                 };
                 filesProcessed++;
-                if (filesProcessed === files.length) {
+                if (filesProcessed === totalFiles) {
                     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existingData));
-                    updateLoadedFilesList(Object.keys(existingData));
-                    updateColumnSelector(Array.from(allHeaders));
-                    alert(`${files.length} file(s) loaded and stored.`);
-                    fileInput.value = '';
+                    updateUIAfterDataLoad(existingData);
+                    alert(`${totalFiles} file(s) processed and stored.`);
+                    fileInput.value = ''; // Reset file input
+                    if (browseModeRadio.checked) {
+                        triggerBrowse(); // Refresh browse view if in browse mode
+                    }
                 }
             };
             reader.onerror = () => {
                 alert(`Error reading file: ${file.name}`);
                 filesProcessed++;
-                 if (filesProcessed === files.length) {
-                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existingData));
-                    updateLoadedFilesList(Object.keys(existingData));
-                    updateColumnSelector(Array.from(allHeaders));
+                 if (filesProcessed === totalFiles) {
+                    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(existingData)); // Save what was processed
+                    updateUIAfterDataLoad(existingData);
                 }
             };
             reader.readAsText(file);
         });
     }
 
-    function loadFilesFromStorageAndSetup() {
-        const data = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
-        const allHeaders = new Set();
-        if (data) {
-            Object.values(data).forEach(fileData => {
-                if (fileData.headers && fileData.rows) {
-                    fileData.headers.forEach(h => allHeaders.add(h));
+    function handleModeChange() {
+        sortColumnKey = ''; // Reset sort when mode changes
+        sortDirection = 'asc';
+        if (browseModeRadio.checked) {
+            browseControlsSection.style.display = 'block';
+            searchControlsSection.style.display = 'none';
+            resultsHeader.textContent = 'Browse Results:';
+            searchInput.value = ''; // Clear search input
+            triggerBrowse();
+        } else { // Search mode
+            browseControlsSection.style.display = 'none';
+            searchControlsSection.style.display = 'block';
+            resultsHeader.textContent = 'Search Results:';
+            searchResultsDiv.innerHTML = '<p>Enter search criteria above and click Search.</p>';
+            resultsCountDiv.textContent = '';
+            currentDataForDisplayAndDownload = [];
+            toggleDownloadButtons(false);
+        }
+    }
+
+    function triggerBrowse() {
+        const selectedFileName = browseFileSelect.value;
+        const storedData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {};
+        let dataToBrowse = [];
+        let distinctHeaders = new Set();
+
+        if (Object.keys(storedData).length === 0) {
+            searchResultsDiv.innerHTML = '<p>No files loaded to browse.</p>';
+            resultsCountDiv.textContent = '';
+            currentDataForDisplayAndDownload = [];
+            currentHeadersForDisplay = [];
+            toggleDownloadButtons(false);
+            renderTable([], []); // Clear table
+            return;
+        }
+        
+        if (selectedFileName === 'all') {
+            resultsHeader.textContent = 'Browsing: All Loaded Files';
+            Object.values(storedData).forEach(fileData => {
+                if (fileData && fileData.rows) dataToBrowse.push(...fileData.rows);
+                if (fileData && fileData.headers) fileData.headers.forEach(h => distinctHeaders.add(h));
+            });
+        } else if (storedData[selectedFileName] && storedData[selectedFileName].rows) {
+            resultsHeader.textContent = `Browsing: ${selectedFileName}`;
+            dataToBrowse = storedData[selectedFileName].rows;
+            if (storedData[selectedFileName].headers) {
+                storedData[selectedFileName].headers.forEach(h => distinctHeaders.add(h));
+            }
+        }
+
+        currentHeadersForDisplay = FIXED_HEADER_ORDER.filter(h => distinctHeaders.has(h));
+        if (currentHeadersForDisplay.length === 0 && distinctHeaders.size > 0) {
+            currentHeadersForDisplay = Array.from(distinctHeaders).sort();
+        }
+        
+        currentDataForDisplayAndDownload = dataToBrowse;
+        sortColumnKey = ''; // Reset sort when browsing new data
+        sortDirection = 'asc';
+        sortAndDisplayData(); 
+        resultsCountDiv.textContent = `Displaying ${dataToBrowse.length} row(s).`;
+        toggleDownloadButtons(dataToBrowse.length > 0);
+    }
+
+    function performSearch() {
+        const searchTerm = searchInput.value.trim().toLowerCase();
+        const selectedSearchCol = columnSelect.value; // Renamed to avoid conflict
+        
+        if (!searchTerm) {
+            alert('Please enter a search term.');
+            searchResultsDiv.innerHTML = '<p>Please enter a search term.</p>';
+            resultsCountDiv.textContent = '';
+            currentDataForDisplayAndDownload = [];
+            currentHeadersForDisplay = [];
+            toggleDownloadButtons(false);
+            renderTable([], []);
+            return;
+        }
+
+        const storedData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
+        if (!storedData || Object.keys(storedData).length === 0) {
+            alert('No files loaded to search.');
+            return;
+        }
+
+        let matchedRows = [];
+        let distinctHeadersInMatches = new Set();
+
+        Object.values(storedData).forEach(fileData => {
+            const fileHeaders = fileData.headers || [];
+            const fileRows = fileData.rows || [];
+
+            fileRows.forEach(row => {
+                let rowMatched = false;
+                if (selectedSearchCol === 'all') {
+                    if (Object.values(row).some(val => String(val).toLowerCase().includes(searchTerm))) {
+                        rowMatched = true;
+                    }
                 } else {
-                    const parsed = parseTSV(fileData.content);
-                    fileData.headers = parsed.headers;
-                    fileData.rows = parsed.rows;
-                    fileData.headerLineIndex = parsed.headerLineIndex;
-                    parsed.headers.forEach(h => allHeaders.add(h));
+                    if (row.hasOwnProperty(selectedSearchCol) && String(row[selectedSearchCol]).toLowerCase().includes(searchTerm)) {
+                        rowMatched = true;
+                    }
+                }
+                if (rowMatched) {
+                    matchedRows.push(row);
+                    fileHeaders.forEach(h => distinctHeadersInMatches.add(h));
                 }
             });
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-            updateLoadedFilesList(Object.keys(data));
-            updateColumnSelector(Array.from(allHeaders));
-        } else {
-            updateLoadedFilesList([]);
-            updateColumnSelector([]);
+        });
+        
+        currentHeadersForDisplay = FIXED_HEADER_ORDER.filter(h => distinctHeadersInMatches.has(h));
+         if (currentHeadersForDisplay.length === 0 && distinctHeadersInMatches.size > 0) {
+            currentHeadersForDisplay = Array.from(distinctHeadersInMatches).sort();
+        }
+
+        currentDataForDisplayAndDownload = matchedRows;
+        sortColumnKey = ''; // Reset sort for new search
+        sortDirection = 'asc';
+        sortAndDisplayData();
+        resultsCountDiv.textContent = `Found ${matchedRows.length} match(es).`;
+        toggleDownloadButtons(matchedRows.length > 0);
+        if (matchedRows.length === 0) {
+             searchResultsDiv.innerHTML = '<p>No results found.</p>';
         }
     }
 
     function updateLoadedFilesList(fileNames) {
         loadedFilesList.innerHTML = '';
         if (fileNames.length === 0) {
-            const li = document.createElement('li');
-            li.textContent = 'No files loaded.';
-            loadedFilesList.appendChild(li);
+            loadedFilesList.innerHTML = '<li>No files loaded.</li>';
         } else {
             fileNames.forEach(name => {
                 const li = document.createElement('li');
@@ -177,10 +334,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function updateBrowseFileDropdown(fileNames) {
+        browseFileSelect.innerHTML = '<option value="all">All Loaded Files</option>';
+        fileNames.forEach(name => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            browseFileSelect.appendChild(option);
+        });
+    }
+
     function updateColumnSelector(headers) {
         columnSelect.innerHTML = '<option value="all">All Columns</option>';
-        headers.sort().forEach(header => {
-            if (header.trim() !== '') {
+        FIXED_HEADER_ORDER.forEach(fixedHeader => {
+            if (headers.includes(fixedHeader)) {
+                const option = document.createElement('option');
+                option.value = fixedHeader;
+                option.textContent = fixedHeader;
+                columnSelect.appendChild(option);
+            }
+        });
+        headers.forEach(header => {
+            if (!FIXED_HEADER_ORDER.includes(header) && header.trim() !== '') {
                 const option = document.createElement('option');
                 option.value = header;
                 option.textContent = header;
@@ -191,12 +366,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function parseTSV(content) {
         const lines = content.split('\n');
-        const headerLineIndex = lines.findIndex(line => line.trim() !== '');
+        let headerLineIndex = -1;
+        let headers = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim() !== '') {
+                headerLineIndex = i;
+                headers = lines[i].split('\t').map(h => h.trim());
+                break;
+            }
+        }
         if (headerLineIndex === -1) return { headers: [], rows: [], headerLineIndex: -1 };
-
-        const headers = lines[headerLineIndex].split('\t').map(h => h.trim());
+        
         const dataRows = lines.slice(headerLineIndex + 1);
-
         const rows = dataRows.map(line => {
             const values = line.split('\t');
             const rowObject = {};
@@ -204,184 +386,138 @@ document.addEventListener('DOMContentLoaded', () => {
                 rowObject[header] = values[index] ? values[index].trim() : '';
             });
             return rowObject;
-        }).filter(row => Object.values(row).some(val => val && val.trim() !== ''));
+        }).filter(row => Object.values(row).some(val => val && String(val).trim() !== ''));
         return { headers, rows, headerLineIndex };
     }
-
-    // Helper function to get headers for display/download based on loaded files
-    function getHeadersForOutput() {
-        const storedData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {};
-        const allLoadedHeadersSet = new Set();
-        Object.values(storedData).forEach(fileData => {
-            if (fileData.headers) {
-                fileData.headers.forEach(h => allLoadedHeadersSet.add(h));
-            }
-        });
-        return FIXED_HEADER_ORDER.filter(fixedHeader => allLoadedHeadersSet.has(fixedHeader));
-    }
-
-    function performSearch() {
-        const searchTerm = searchInput.value.trim().toLowerCase();
-        const selectedColumn = columnSelect.value;
-        searchResultsDiv.innerHTML = '';
-        resultsCountDiv.textContent = '';
-        currentSearchResults = [];
-
-        if (!searchTerm) {
-            alert('Please enter a search term.');
-            toggleDownloadButtons(false);
-            return;
+    
+    function generateLink(headerKey, value) {
+        const sValue = String(value);
+        if (!sValue || sValue === '-' || sValue.trim() === '') {
+            return sValue;
         }
-
-        const storedData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY));
-        if (!storedData || Object.keys(storedData).length === 0) {
-            alert('No files loaded to search.');
-            toggleDownloadButtons(false);
-            return;
-        }
-
-        let matchesCount = 0;
-
-        for (const fileName in storedData) {
-            if (storedData.hasOwnProperty(fileName)) {
-                const fileData = storedData[fileName];
-                const fileHeaders = fileData.headers || [];
-                const fileRows = fileData.rows || [];
-                const fileHeaderLineIndex = fileData.headerLineIndex;
-
-                if (selectedColumn === 'all') {
-                    if (fileHeaders.some(header => header.toLowerCase().includes(searchTerm))) {
-                        currentSearchResults.push({
-                            fileName: fileName,
-                            isHeader: true,
-                            headers: fileHeaders,
-                            matchedContent: fileHeaders.join('\t'),
-                            lineNumber: fileHeaderLineIndex !== undefined ? fileHeaderLineIndex + 1 : 1
-                        });
-                        matchesCount++;
-                    }
-                } else if (fileHeaders.includes(selectedColumn) && selectedColumn.toLowerCase().includes(searchTerm)) {
-                     currentSearchResults.push({
-                        fileName: fileName,
-                        isHeader: true,
-                        headers: fileHeaders,
-                        matchedContent: fileHeaders.join('\t'),
-                        lineNumber: fileHeaderLineIndex !== undefined ? fileHeaderLineIndex + 1 : 1
-                    });
-                    matchesCount++;
-                }
-
-                fileRows.forEach((row, rowIndex) => {
-                    let rowMatched = false;
-                    if (selectedColumn === 'all') {
-                        if (Object.values(row).some(val => val.toLowerCase().includes(searchTerm))) {
-                            rowMatched = true;
-                        }
-                    } else {
-                        if (row.hasOwnProperty(selectedColumn) && row[selectedColumn].toLowerCase().includes(searchTerm)) {
-                            rowMatched = true;
-                        }
-                    }
-
-                    if (rowMatched) {
-                        currentSearchResults.push({
-                            fileName: fileName,
-                            isHeader: false,
-                            headers: fileHeaders,
-                            rowData: row,
-                            lineNumber: fileHeaderLineIndex !== undefined ? fileHeaderLineIndex + rowIndex + 2 : rowIndex + 2
-                        });
-                        matchesCount++;
-                    }
-                });
-            }
-        }
-
-        displayResults(currentSearchResults);
-        resultsCountDiv.textContent = `Found ${matchesCount} match(es).`;
-        toggleDownloadButtons(matchesCount > 0);
-        if (matchesCount === 0) {
-             searchResultsDiv.innerHTML = '<p>No results found.</p>';
-        }
-    }
-
-    function generateLink(header, value) {
-        if (!value || value === '-' || value.trim() === '') {
-            return value;
-        }
-        const baseUrl = ACCESSION_URLS[header];
+        const baseUrl = ACCESSION_URLS[headerKey];
         if (baseUrl) {
-            // Handle multiple values separated by common delimiters like ',' or ';'
-            const ids = value.split(/[,;\s*]+/).map(id => id.trim()).filter(id => id);
+            const ids = sValue.split(/[,;\s]+/).map(id => id.trim()).filter(id => id);
             if (ids.length > 1) {
                 return ids.map(id => {
-                    let idLink = id;
-                    if (header === 'ARO accession' && id.includes(':')) { // Specific handling for ARO accessions
-                        idLink = `<a href="${baseUrl}${id.replace("ARO:", "")}" target="_blank">${id}</a>`;
-                    } else if (header === 'evidence code' && id.includes(':')) { // Specific handling for evidence codes (e.g., ECO:0000269)
-                         idLink = `<a href="${baseUrl}${id.replace("ECO:", "ECO:")}" target="_blank">${id}</a>`;
-                    } else {
-                        idLink = `<a href="${baseUrl}${encodeURIComponent(id)}">${id}</a>`;
-
+                    let urlSuffix = encodeURIComponent(id);
+                    if (headerKey === 'ARO accession' && id.startsWith('ARO:')) {
+                        urlSuffix = id.substring(4);
+                    } else if (headerKey === 'evidence code' && id.startsWith('ECO:')) {
+                         urlSuffix = id; // ECO URLs often take the full ECO:000xxx
+                    } else if (headerKey === 'HMM accession' && id.includes('.')){
+                        urlSuffix = id.split('.')[0]; // Take part before first dot for HMM
                     }
-                    return idLink;
-                }).join(', '); // Join multiple links with a ; and space
-            } else { // Single value
-                 if (header === 'ARO accession' && value.includes(':')) {
-                     return `<a href="${baseUrl}${value.replace("ARO:", "")}" target="_blank">${value}</a>`;
-                 }
-                 if (header === 'evidence code' && value.includes(':')) {
-                     return `<a href="${baseUrl}${value.replace("ECO:", "ECO:")}" target="_blank">${value}</a>`;
-                 }
-                return `<a href="${baseUrl}${encodeURIComponent(value)}">${value}</a>`;
+                    return `<a href="${baseUrl}${urlSuffix}" target="_blank">${id}</a>`;
+                }).join(', ');
+            } else {
+                let urlSuffix = encodeURIComponent(sValue);
+                 if (headerKey === 'ARO accession' && sValue.startsWith('ARO:')) {
+                    urlSuffix = sValue.substring(4);
+                } else if (headerKey === 'evidence code' && sValue.startsWith('ECO:')) {
+                    urlSuffix = sValue;
+                } else if (headerKey === 'HMM accession' && sValue.includes('.')){
+                    urlSuffix = sValue.split('.')[0];
+                }
+                return `<a href="${baseUrl}${urlSuffix}" target="_blank">${sValue}</a>`;
             }
         }
-        return value;
+        return sValue;
     }
 
-    function displayResults(results) {
+    function sortAndDisplayData() {
+        let dataToDisplay = [...currentDataForDisplayAndDownload];
+
+        if (sortColumnKey && currentHeadersForDisplay.includes(sortColumnKey)) {
+            dataToDisplay.sort((a, b) => {
+                let valA = String(a[sortColumnKey] || '');
+                let valB = String(b[sortColumnKey] || '');
+
+                const numA = parseFloat(valA);
+                const numB = parseFloat(valB);
+
+                let compareResult;
+                if (!isNaN(numA) && !isNaN(numB) && valA.match(/^[\d.-]+$/) && valB.match(/^[\d.-]+$/)) { // Check if they are purely numeric strings
+                    compareResult = numA - numB;
+                } else {
+                    compareResult = valA.toLowerCase().localeCompare(valB.toLowerCase());
+                }
+
+                return sortDirection === 'asc' ? compareResult : -compareResult;
+            });
+        }
+        renderTable(currentHeadersForDisplay, dataToDisplay);
+    }
+    
+    function renderTable(headers, rowsData) {
         searchResultsDiv.innerHTML = '';
-        if (results.length === 0) {
-            searchResultsDiv.innerHTML = '<p>No results found.</p>';
+        if (!headers || headers.length === 0) {
+             if (browseModeRadio.checked && currentDataForDisplayAndDownload.length > 0) {
+                searchResultsDiv.innerHTML = '<p>No common headers found for selected data, or headers configuration issue.</p>';
+            } else if (!browseModeRadio.checked && currentDataForDisplayAndDownload.length > 0) {
+                 searchResultsDiv.innerHTML = '<p>No headers defined for search results.</p>';
+            }
+            // If no data at all, specific messages are handled by callers.
             return;
         }
-        
-        const headersToDisplay = getHeadersForOutput();
-        
-        const table = document.createElement('table');
-        table.classList.add('results-table');
 
-        // Create table header
+
+        const table = document.createElement('table');
         const thead = document.createElement('thead');
         const headerRow = document.createElement('tr');
-        headersToDisplay.forEach(headerText => { // Use the headers determined for display
+
+        headers.forEach(headerKey => {
             const th = document.createElement('th');
-            th.textContent = headerText; // Use the header from the filtered list
+            th.textContent = headerKey;
+            th.dataset.columnKey = headerKey;
+
+            const arrowSpan = document.createElement('span');
+            arrowSpan.classList.add('sort-arrow');
+            if (headerKey === sortColumnKey) {
+                th.classList.add(sortDirection === 'asc' ? 'sorted-asc' : 'sorted-desc');
+                arrowSpan.innerHTML = sortDirection === 'asc' ? ' ↑' : ' ↓';
+            }
+            th.appendChild(arrowSpan);
+            
+            th.addEventListener('click', () => {
+                if (sortColumnKey === headerKey) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortColumnKey = headerKey;
+                    sortDirection = 'asc';
+                }
+                sortAndDisplayData();
+            });
             headerRow.appendChild(th);
         });
         thead.appendChild(headerRow);
         table.appendChild(thead);
 
-        // Create table body
         const tbody = document.createElement('tbody');
-        const fragment = document.createDocumentFragment();
-
-        results.forEach(result => {
-            const rowElement = document.createElement('tr');
-            
-        // Add data cells based on the headers to display
-        headersToDisplay.forEach(header => {
-            const td = document.createElement('td');
-            // Get cell value from rowData if it's a data row, or header text if it's a header row match
-            const cellValue = result.isHeader ? (result.headers.includes(header) ? header : '') : (result.rowData[header]);
-            td.innerHTML = generateLink(header, cellValue); // Use innerHTML to render links
-            rowElement.appendChild(td);
+        const fragment = document.createDocumentFragment(); // For performance
+        if (rowsData.length > 0) {
+            rowsData.forEach(rowDataItem => {
+                const rowElement = document.createElement('tr');
+                headers.forEach(headerKey => {
+                    const td = document.createElement('td');
+                    const cellValue = rowDataItem[headerKey] === undefined ? '' : rowDataItem[headerKey];
+                    td.innerHTML = generateLink(headerKey, cellValue);
+                    rowElement.appendChild(td);
+                });
+                fragment.appendChild(rowElement);
             });
-            fragment.appendChild(rowElement);
-        });
+        }
         tbody.appendChild(fragment);
         table.appendChild(tbody);
         searchResultsDiv.appendChild(table);
+
+        if (rowsData.length === 0 && browseModeRadio.checked) {
+             resultsCountDiv.textContent = `Displaying 0 rows. ${ (browseFileSelect.value !== 'all' && Object.keys(JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || {}).length > 0) ? 'Selected file might be empty or header-only.' : ''}`;
+        } else if (rowsData.length === 0 && searchModeRadio.checked) {
+            resultsCountDiv.textContent = "Found 0 match(es)."
+            // No specific message here, performSearch handles it
+        }
+
     }
 
     function toggleDownloadButtons(enable) {
@@ -389,24 +525,21 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadCsvButton.disabled = !enable;
     }
 
-    function downloadResults(format) {
-        if (currentSearchResults.length === 0) {
-            alert("No results to download.");
+    function downloadCurrentData(format) {
+        if (currentDataForDisplayAndDownload.length === 0) {
+            alert("No data to download.");
             return;
         }
         
-        const headersForDownload = getHeadersForOutput();
+        const headersForDownload = currentHeadersForDisplay;
         const separator = format === 'tsv' ? '\t' : ',';
-        let content = headersForDownload.map(h => (format === 'csv' ? `"${h.replace(/"/g, '""')}"` : h)).join(separator) + '\n';
+        let content = headersForDownload.map(h => (format === 'csv' ? `"${String(h).replace(/"/g, '""')}"` : String(h))).join(separator) + '\n';
 
-        currentSearchResults.forEach(result => {
-            const rowValues = [];
-            headersForDownload.forEach(header => {
-                let value = '';
-                // Get cell value from rowData if it's a data row, or header text if it's a header row match
-                value = result.isHeader ? (result.headers.includes(header) ? header : '') : (result.rowData[header] || ''); // Use || '' to handle undefined
-                if (format === 'csv') value = `"${(value || '').toString().replace(/"/g, '""')}"`;
-                rowValues.push(value);
+        currentDataForDisplayAndDownload.forEach(rowItem => {
+            const rowValues = headersForDownload.map(headerKey => {
+                let value = rowItem[headerKey] === undefined ? '' : rowItem[headerKey];
+                if (format === 'csv') value = `"${String(value).replace(/"/g, '""')}"`;
+                return value;
             });
             content += rowValues.join(separator) + '\n';
         });
@@ -415,11 +548,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
-        link.setAttribute("download", `search_results.${format}`);
+        link.setAttribute("download", `amrrules_data.${format}`);
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url); // Clean up
+        URL.revokeObjectURL(url);
     }
 });
