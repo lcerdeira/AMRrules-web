@@ -407,7 +407,7 @@ document.addEventListener('DOMContentLoaded', () => {
              .replace(/'/g, "&#039;");
     }
 
-    function generateLink(headerKey, value) {
+  function generateLink(headerKey, value) {
         const sValue = String(value);
         if (!sValue || sValue === '-' || sValue.trim() === '') {
             return sValue; // Return original non-values as is
@@ -415,7 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const baseUrl = ACCESSION_URLS[headerKey];
         if (baseUrl) {
-            const ids = sValue.split(/[,;\s]+/).map(id => id.trim()).filter(id => id);
+            // Modified: Add replace to remove surrounding double quotes from IDs
+            const ids = sValue.split(/[,;\s]+/).map(id => id.trim().replace(/^"|"$/g, '')).filter(id => id);
 
             const buildLinkTag = (displayAndProcessValue) => {
                 let suffixPart = displayAndProcessValue; // This will be processed for the URL
@@ -423,16 +424,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (headerKey === 'ARO accession' && displayAndProcessValue.startsWith('ARO:')) {
                     suffixPart = displayAndProcessValue.substring(4);
                 } else if (headerKey === 'HMM accession' && displayAndProcessValue.includes('.')) {
-                    suffixPart = displayAndProcessValue.split('.')[0];
+                    suffixPart = displayAndProcessValue;
                 }
-                // For 'evidence code' (ECO:...), suffixPart remains displayAndProcessValue.
-                // The special handling for ECO is that its suffixPart is NOT URL encoded below.
 
                 let urlSuffix;
                 if (headerKey === 'evidence code' && displayAndProcessValue.startsWith('ECO:')) {
                     urlSuffix = suffixPart; // Use as-is, not encoded, per original implicit logic
+                    suffixPart = displayAndProcessValue.substring(4);
                 } else {
                     urlSuffix = encodeURIComponent(suffixPart);
+                    // Ensure colons are not encoded in the final URL suffix
+                    urlSuffix = urlSuffix.replace(/%3A/g, ':');
+                }
+
+            if (headerKey === 'PMID') {
+
                 }
                 // Link text is the original displayAndProcessValue, HTML escaped.
                 return `<a href="${baseUrl}${urlSuffix}" target="_blank">${escapeHtml(displayAndProcessValue)}</a>`;
@@ -446,6 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return escapeHtml(sValue); // Fallback: return value, HTML escaped for safety in table
     }
+
 
     function sortAndDisplayData() {
         let dataToDisplay = [...currentDataForDisplayAndDownload];
