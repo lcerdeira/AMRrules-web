@@ -47,7 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'PMID': 'https://pubmed.ncbi.nlm.nih.gov/',
         'ARO accession': 'https://card.mcmaster.ca/aro/',
         'evidence code': 'https://evidenceontology.org/term/',
-        'HMM accession': 'https://0-www-ncbi-nlm-nih-gov.brum.beds.ac.uk/genome/annotation_prok/evidence/' // Example, adjust if needed
+        'nodeID': 'https://www.ncbi.nlm.nih.gov/pathogens/genehierarchy/',
+        'HMM accession': 'https://www.ncbi.nlm.nih.gov/pathogens/hmm/#'
     };
 
     // --- State Variables ---
@@ -206,13 +207,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (browseModeRadio.checked) {
             browseControlsSection.style.display = 'block';
             searchControlsSection.style.display = 'none';
-            resultsHeader.textContent = 'Browse Results:';
+            resultsHeader.textContent = 'Browse results:';
             searchInput.value = ''; // Clear search input
             triggerBrowse();
         } else { // Search mode
             browseControlsSection.style.display = 'none';
             searchControlsSection.style.display = 'block';
-            resultsHeader.textContent = 'Search Results:';
+            resultsHeader.textContent = 'Search results:';
             searchResultsDiv.innerHTML = '<p>Enter search criteria above and click Search.</p>';
             resultsCountDiv.textContent = '';
             currentDataForDisplayAndDownload = [];
@@ -227,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let distinctHeaders = new Set();
 
         if (Object.keys(storedData).length === 0) {
-            searchResultsDiv.innerHTML = '<p>No files loaded to browse.</p>';
+            searchResultsDiv.innerHTML = '<p>No organisms loaded to browse.</p>';
             resultsCountDiv.textContent = '';
             currentDataForDisplayAndDownload = [];
             currentHeadersForDisplay = [];
@@ -237,7 +238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         if (selectedFileName === 'all') {
-            resultsHeader.textContent = 'Browsing: All Loaded Files';
+            resultsHeader.textContent = 'Browsing: all loaded organisms';
             Object.values(storedData).forEach(fileData => {
                 if (fileData && fileData.rows) dataToBrowse.push(...fileData.rows);
                 if (fileData && fileData.headers) fileData.headers.forEach(h => distinctHeaders.add(h));
@@ -394,39 +395,56 @@ document.addEventListener('DOMContentLoaded', () => {
         return { headers, rows, headerLineIndex };
     }
     
+    function escapeHtml(unsafe) {
+        if (typeof unsafe !== 'string') {
+            unsafe = String(unsafe); // Ensure it's a string
+        }
+        return unsafe
+             .replace(/&/g, "&amp;")
+             .replace(/</g, "&lt;")
+             .replace(/>/g, "&gt;")
+             .replace(/"/g, "&quot;")
+             .replace(/'/g, "&#039;");
+    }
+
     function generateLink(headerKey, value) {
         const sValue = String(value);
         if (!sValue || sValue === '-' || sValue.trim() === '') {
-            return sValue;
+            return sValue; // Return original non-values as is
         }
+
         const baseUrl = ACCESSION_URLS[headerKey];
         if (baseUrl) {
             const ids = sValue.split(/[,;\s]+/).map(id => id.trim()).filter(id => id);
-            if (ids.length > 1) {
-                return ids.map(id => {
-                    let urlSuffix = encodeURIComponent(id);
-                    if (headerKey === 'ARO accession' && id.startsWith('ARO:')) {
-                        urlSuffix = id.substring(4);
-                    } else if (headerKey === 'evidence code' && id.startsWith('ECO:')) {
-                         urlSuffix = id; // ECO URLs often take the full ECO:000xxx
-                    } else if (headerKey === 'HMM accession' && id.includes('.')){
-                        urlSuffix = id.split('.')[0]; // Take part before first dot for HMM
-                    }
-                    return `<a href="${baseUrl}${urlSuffix}" target="_blank">${id}</a>`;
-                }).join(', ');
-            } else {
-                let urlSuffix = encodeURIComponent(sValue);
-                 if (headerKey === 'ARO accession' && sValue.startsWith('ARO:')) {
-                    urlSuffix = sValue.substring(4);
-                } else if (headerKey === 'evidence code' && sValue.startsWith('ECO:')) {
-                    urlSuffix = sValue;
-                } else if (headerKey === 'HMM accession' && sValue.includes('.')){
-                    urlSuffix = sValue.split('.')[0];
+
+            const buildLinkTag = (displayAndProcessValue) => {
+                let suffixPart = displayAndProcessValue; // This will be processed for the URL
+
+                if (headerKey === 'ARO accession' && displayAndProcessValue.startsWith('ARO:')) {
+                    suffixPart = displayAndProcessValue.substring(4);
+                } else if (headerKey === 'HMM accession' && displayAndProcessValue.includes('.')) {
+                    suffixPart = displayAndProcessValue.split('.')[0];
                 }
-                return `<a href="${baseUrl}${urlSuffix}" target="_blank">${sValue}</a>`;
+                // For 'evidence code' (ECO:...), suffixPart remains displayAndProcessValue.
+                // The special handling for ECO is that its suffixPart is NOT URL encoded below.
+
+                let urlSuffix;
+                if (headerKey === 'evidence code' && displayAndProcessValue.startsWith('ECO:')) {
+                    urlSuffix = suffixPart; // Use as-is, not encoded, per original implicit logic
+                } else {
+                    urlSuffix = encodeURIComponent(suffixPart);
+                }
+                // Link text is the original displayAndProcessValue, HTML escaped.
+                return `<a href="${baseUrl}${urlSuffix}" target="_blank">${escapeHtml(displayAndProcessValue)}</a>`;
+            };
+
+            if (ids.length > 1) { // Multiple distinct IDs found
+                return ids.map(id => buildLinkTag(id)).join(', ');
+            } else { // Single ID or original sValue if no (or one) ID was parsed
+                return buildLinkTag(sValue);
             }
         }
-        return sValue;
+        return escapeHtml(sValue); // Fallback: return value, HTML escaped for safety in table
     }
 
     function sortAndDisplayData() {
